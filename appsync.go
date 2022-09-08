@@ -30,10 +30,19 @@ var GRAPHQL_API_ID = os.Getenv("API_HEATCTRL_GRAPHQLAPIIDOUTPUT")
 var GRAPHQL_ENDPOINT = os.Getenv("API_HEATCTRL_GRAPHQLAPIENDPOINTOUTPUT")
 var REGION = os.Getenv("REGION")
 
-func NewAppSyncClient() *AppSyncClient {
+func NewAppSyncClient() (*AppSyncClient, error) {
+
+	println("****")
 	println(GRAPHQL_API_ID)
 	println(GRAPHQL_ENDPOINT)
+	println(SERVICE)
 	println(REGION)
+	println("****")
+
+	credentials, err := RetrieveCredentials(context.Background())
+	if err != nil {
+		return nil, err
+	}
 	// https://christina04.hatenablog.com/entry/go-keep-alive
 	return &AppSyncClient{
 		&http.Client{
@@ -53,60 +62,65 @@ func NewAppSyncClient() *AppSyncClient {
 			},
 			Timeout: 10 * time.Second,
 		},
-		RetrieveCredentials(context.Background()),
+		credentials,
 		v4.NewSigner(),
-	}
+	}, nil
 }
 
-func RetrieveCredentials(ctx context.Context) *aws.Credentials {
+func RetrieveCredentials(ctx context.Context) (*aws.Credentials, error) {
 	cfg, err := config.LoadDefaultConfig(ctx, config.WithRegion(REGION))
 	if err != nil {
-		panic(err)
+		return nil, err
 	}
 	credentials, err := cfg.Credentials.Retrieve(ctx)
 	if err != nil {
-		panic(err)
+		return nil, err
 	}
-	return &credentials
+	return &credentials, nil
 }
 
-func HashBody(req *http.Request) string {
+func HashBody(req *http.Request) (string, error) {
 	body, err := req.GetBody()
 	if err != nil {
-		panic(err)
+		return "", err
 	}
 	var buf bytes.Buffer
 	buf.ReadFrom(body)
 	hash := sha256.Sum256(buf.Bytes())
-	return hex.EncodeToString(hash[:])
+	return hex.EncodeToString(hash[:]), nil
 }
 
-func (client *AppSyncClient) SendRequest(ctx context.Context, graphQL io.Reader) []byte {
+func (client *AppSyncClient) SendRequest(ctx context.Context, graphQL io.Reader) ([]byte, error) {
 	req, err := http.NewRequest(http.MethodPost, GRAPHQL_ENDPOINT, graphQL)
 	if err != nil {
-		panic(err)
+		return nil, err
 	}
 	req.Header.Set("Content-Type", "application/json")
 
-	client.Siner.SignHTTP(ctx, *client.Credentials, req, HashBody(req), SERVICE, REGION, time.Now())
+	hash, err := HashBody(req)
 	if err != nil {
-		panic(err)
+		return nil, err
+	}
+
+	client.Siner.SignHTTP(ctx, *client.Credentials, req, hash, SERVICE, REGION, time.Now())
+	if err != nil {
+		return nil, err
 	}
 
 	resp, err := client.HttpClient.Do(req)
 	if err != nil {
-		panic(err)
+		return nil, err
 	}
 	defer resp.Body.Close()
 
 	respBody, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
-		panic(err)
+		return nil, err
 	}
 
 	if resp.StatusCode == http.StatusOK {
-		return respBody
+		return respBody, nil
 	} else {
-		panic(fmt.Errorf("Non-OK HTTP status: %v", resp.StatusCode))
+		return nil, fmt.Errorf("Non-OK HTTP status: %v", resp.StatusCode)
 	}
 }
