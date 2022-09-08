@@ -31,6 +31,9 @@ var GRAPHQL_ENDPOINT = os.Getenv("API_HEATCTRL_GRAPHQLAPIENDPOINTOUTPUT")
 var REGION = os.Getenv("REGION")
 
 func NewAppSyncClient() *AppSyncClient {
+	println(GRAPHQL_API_ID)
+	println(GRAPHQL_ENDPOINT)
+	println(REGION)
 	// https://christina04.hatenablog.com/entry/go-keep-alive
 	return &AppSyncClient{
 		&http.Client{
